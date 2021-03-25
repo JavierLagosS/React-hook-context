@@ -1,24 +1,116 @@
-import logo from './logo.svg';
+
+import React from 'react';
 import './App.css';
+import Navbar from "./components/Navbar";
+import Searchbar from "./components/Searchbar";
+import Pokedex from "./components/pokedex";
+import {getPokemonData, getPokemons, searchPokemon} from "./rest/Api";
+import {FavoriteProvider} from "./contexts/favoritesContexts"
+
+
+const {useState, useEffect} = React;
+const localStorageKey = "favorite_pokemon";
 
 function App() {
-  return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
+    const [pokemons,setPokemons] = useState([])
+    const [page, setPage] = useState(0);
+    const [total, setTotal]= useState(0);
+    const [loading, setLoading] = useState(true);
+    const [favorites, setFavorites] = useState([]);
+    const [notFound, setNotFound] = useState(false);
+    const [searching, setSearching] = useState(false);
+
+
+    const fetchpokemons= async () => {
+        try {
+            setLoading(true);
+            const data = await getPokemons(24, 24*page)
+            const promises = data.results.map(async  (pokemon) => {
+                return await getPokemonData(pokemon.url)
+            })
+            const results = await Promise.all(promises)
+            setPokemons(results)
+            setLoading(false)
+            setTotal(Math.ceil(data.count/24))
+            setNotFound(false)
+        } catch (err) {
+        }
+    };
+
+    const loadFavoritePokemons = () => {
+        const pokemons =
+            JSON.parse(window.localStorage.getItem(localStorageKey)) || [];
+        setFavorites(pokemons);
+    };
+
+    useEffect(() => {
+       loadFavoritePokemons();
+    },[]);
+
+    useEffect(() => {
+        if(!searching) {
+            fetchpokemons();
+        }
+    }, [page]);
+
+    const updateFavoritePokemons = (name) =>{
+        const updated = [...favorites];
+        const isFavorite = updated.indexOf(name);
+        if (isFavorite >= 0) {
+            updated.splice(isFavorite, 1);
+        } else {
+            updated.push(name);
+        }
+        setFavorites(updated);
+        window.localStorage.setItem(localStorageKey, JSON.stringify(updated));
+    };
+
+    const onSearch = async (pokemon) => {
+        if (!pokemon) {
+            return fetchpokemons();
+        }
+        setLoading(true);
+        setNotFound(false);
+        setSearching(true);
+        const result = await searchPokemon(pokemon);
+        if (!result) {
+            setNotFound(true);
+            setLoading(false);
+            return;
+        } else {
+            setPokemons([result]);
+            setPage(0);
+            setTotal(1);
+        }
+        setLoading(false);
+        setSearching(false);
+    };
+
+    return (
+        <FavoriteProvider
+            value={{
+                favoritePokemons: favorites,
+                updateFavoritePokemons: updateFavoritePokemons
+            }}
         >
-          Learn React
-        </a>
-      </header>
-    </div>
+          <div>
+              <Navbar/>
+            <div className="App">
+                <Searchbar onSearch={onSearch}/>
+                {notFound ? (
+                    <div className="not-found-text">No se encontro el pokemon que buscabas :C</div>
+                ): (
+                <Pokedex
+                    loading={loading}
+                    pokemons={pokemons}
+                    page={page}
+                    setpage={setPage}
+                    total={total}
+                />
+                )}
+            </div>
+          </div>
+        </FavoriteProvider>
   );
 }
 
